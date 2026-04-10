@@ -27,7 +27,7 @@ async function queryOllama(messages, model = 'llama3.2:1b') {
   const ollamaResponse = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages, stream: false, options: { num_predict: 120, temperature: 0.7 } }),
+    body: JSON.stringify({ model, messages, stream: false, options: { num_predict: 80, temperature: 0.7 } }),
   });
 
   if (!ollamaResponse.ok) throw new Error(`Ollama returned ${ollamaResponse.status}`);
