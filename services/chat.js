@@ -17,23 +17,6 @@ Be natural and conversational. If asked to write code, write proper code. If ask
 You're not a detective game character — you're a real helpful assistant.`,
 };
 
-const FALLBACK_RESPONSES = {
-  detective: [
-    "That's an interesting lead... have you checked the Notes app? 🔍",
-    "Hmm, I think the answer is hidden in plain sight. Look at the titles! 📝",
-    "Look carefully at the first character of each note. Something doesn't add up. 🤔",
-    "You're getting warmer! Keep looking... the clue is in the note titles. 🔥",
-    "Try combining what you see in the note titles. Numbers are key! 🔢",
-  ],
-  general: [
-    "I'd love to help! Could you tell me a bit more? 😊",
-    "That's a great question! Let me think about it... 💭",
-    "Sure thing! What specifically would you like to know? ✨",
-    "I'm here for you! Ask me anything 💕",
-    "Interesting! Let me help you with that 🌟",
-  ],
-};
-
 async function queryOllama(messages, model = 'llama3.2:1b') {
   const ollamaResponse = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
@@ -45,29 +28,6 @@ async function queryOllama(messages, model = 'llama3.2:1b') {
 
   const responseData = await ollamaResponse.json();
   return responseData.message?.content || null;
-}
-
-function getFallbackResponse(message, context = 'general') {
-  const lower = message.toLowerCase();
-  const pool = FALLBACK_RESPONSES[context] || FALLBACK_RESPONSES.general;
-
-  if (context === 'detective') {
-    if (lower.includes('help') || lower.includes('hint'))
-      return "Look at the Notes app — there's a pattern in the titles. 🔍";
-    if (lower.includes('password') || lower.includes('passcode') || lower.includes('code'))
-      return "I can't just tell you! But look at the FIRST character of each note title... 🤫";
-    if (lower.includes('note') || lower.includes('title'))
-      return "The note titles aren't random. Read the first character of each one, in order. ✨";
-  }
-
-  if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey'))
-    return "Hey there! 👋 How can I help you today?";
-  if (lower.includes('thank'))
-    return "You're welcome! 💕 Anything else I can help with?";
-  if (lower.includes('love') || lower.includes('miss'))
-    return "Aww 💕 That's so sweet!";
-
-  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 export async function sendChat(message, history = [], model = 'llama3.2:1b', context = 'general') {
@@ -82,17 +42,9 @@ export async function sendChat(message, history = [], model = 'llama3.2:1b', con
     { role: 'user', content: message },
   ];
 
-  try {
-    const reply = await queryOllama(ollamaMessages, model);
-    if (reply) {
-      logger.info('Chat response from Ollama', { model, context });
-      return { reply, source: 'ollama' };
-    }
-  } catch (ollamaError) {
-    logger.warn(`Ollama unavailable: ${ollamaError.message}`);
-  }
+  const reply = await queryOllama(ollamaMessages, model);
+  if (!reply) throw new Error('Ollama returned empty response');
 
-  const fallbackReply = getFallbackResponse(message, context);
-  logger.info('Chat response from fallback');
-  return { reply: fallbackReply, source: 'fallback' };
+  logger.info('Chat response from Ollama', { model, context });
+  return { reply, source: 'ollama' };
 }
