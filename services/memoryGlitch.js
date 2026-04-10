@@ -16,16 +16,18 @@ export async function generateTextPair(difficulty = 'easy') {
 Return ONLY valid JSON like this example:
 {"title":"My Day","original":["First sentence.","Second sentence.","Third sentence."],"glitched":["First sentence.","Changed sentence.","Third sentence."],"diffCount":${config.diffs}}`;
 
-  const maxRetries = 3;
+  const modelsToTry = ['gemma2:2b', 'llama3.2:1b', 'llama3.2:3b'];
   let lastError = null;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
+    const currentModel = modelsToTry[attempt];
     try {
+      logger.info(`Memory glitch trying ${currentModel} (attempt ${attempt + 1})`);
       const ollamaResponse = await fetch(`${OLLAMA_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'llama3.2:3b',
+          model: currentModel,
           messages: [
             { role: 'system', content: 'Output ONLY valid JSON. No markdown. No code fences. No explanation. Just the JSON object.' },
             { role: 'user', content: prompt },
@@ -63,7 +65,7 @@ Return ONLY valid JSON like this example:
 
       const minLength = Math.min(originalArray.length, glitchedArray.length);
 
-      logger.info('Generated memory glitch pair', { difficulty, title: parsedPair.title, attempt: attempt + 1 });
+      logger.info('Generated memory glitch pair', { difficulty, title: parsedPair.title, model: currentModel });
 
       return {
         title: parsedPair.title || 'A Sweet Memory',
@@ -74,9 +76,9 @@ Return ONLY valid JSON like this example:
       };
     } catch (attemptError) {
       lastError = attemptError;
-      logger.warn(`Memory glitch attempt ${attempt + 1} failed: ${attemptError.message}`);
+      logger.warn(`Memory glitch ${currentModel} failed: ${attemptError.message}, trying next model...`);
     }
   }
 
-  throw new Error(`Failed after ${maxRetries} attempts: ${lastError?.message}`);
+  throw new Error(`Failed all models: ${lastError?.message}`);
 }
