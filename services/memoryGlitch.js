@@ -16,7 +16,7 @@ export async function generateTextPair(difficulty = 'easy') {
 Return ONLY valid JSON like this example:
 {"title":"My Day","original":["First sentence.","Second sentence.","Third sentence."],"glitched":["First sentence.","Changed sentence.","Third sentence."],"diffCount":${config.diffs}}`;
 
-  const modelsToTry = ['gemma2:2b', 'llama3.2:1b', 'llama3.2:3b'];
+  const modelsToTry = ['gemma2:2b', 'phi3:mini', 'llama3.2:3b'];
   let lastError = null;
 
   for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
