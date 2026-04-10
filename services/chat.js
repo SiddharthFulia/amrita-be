@@ -15,6 +15,8 @@ You're friendly, warm, and helpful. You can help with anything — coding, writi
 Keep responses concise but thorough. Use emoji occasionally.
 Be natural and conversational. If asked to write code, write proper code. If asked questions, give real answers.
 You're not a detective game character — you're a real helpful assistant.`,
+
+  raw: `You are a helpful AI assistant. Answer questions accurately and concisely. Write code when asked. No persona, no character, no roleplay. Just be a straightforward AI.`,
 };
 
 async function queryOllama(messages, model = 'llama3.2:1b') {
