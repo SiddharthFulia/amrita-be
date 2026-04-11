@@ -10,10 +10,17 @@ const DIFFICULTIES = {
 export async function generateTextPair(difficulty = 'easy') {
   const config = DIFFICULTIES[difficulty] || DIFFICULTIES.easy;
 
-  const prompt = `Write a ${config.paragraphs}-paragraph diary entry about a sweet moment. Each paragraph is 1 sentence. Then make a copy with exactly ${config.diffs} words changed to similar but different words.
+  const prompt = `Generate JSON with EXACTLY these 4 keys: "title", "original", "glitched", "diffCount".
 
-Return ONLY valid JSON like this example:
-{"title":"My Day","original":["First sentence.","Second sentence.","Third sentence."],"glitched":["First sentence.","Changed sentence.","Third sentence."],"diffCount":${config.diffs}}`;
+"original" is an array of ${config.paragraphs} sentences about a sweet everyday moment.
+"glitched" is the SAME array but with exactly ${config.diffs} words swapped to different words.
+"title" is a short 2-3 word title.
+"diffCount" is ${config.diffs}.
+
+EXAMPLE:
+{"title":"Morning Walk","original":["I walked to the park with my blue umbrella.","The birds were singing in the tall trees.","We sat on the old wooden bench together."],"glitched":["I walked to the park with my red umbrella.","The birds were singing in the tall trees.","We sat on the old metal bench together."],"diffCount":2}
+
+Now generate a NEW one. Output ONLY the JSON object. No other keys. No nesting. No "diaryEntry" wrapper.`;
 
   const modelsToTry = ['gemma2:2b', 'phi3:mini', 'llama3.2:3b'];
   let lastError = null;
@@ -51,12 +58,26 @@ Return ONLY valid JSON like this example:
 
       const parsedPair = JSON.parse(jsonMatch[0]);
 
-      if (!parsedPair.original || !parsedPair.glitched) {
-        throw new Error('Missing original or glitched');
+      // Handle models that wrap in a parent key like "diaryEntry"
+      const unwrapped = parsedPair.original ? parsedPair
+        : parsedPair.diaryEntry ? parsedPair.diaryEntry
+        : parsedPair.data ? parsedPair.data
+        : parsedPair.entry ? parsedPair.entry
+        : parsedPair;
+
+      // Also handle "paragraphs" instead of "original"
+      const originalData = unwrapped.original || unwrapped.paragraphs || unwrapped.sentences;
+      const glitchedData = unwrapped.glitched || unwrapped.modified || unwrapped.changed;
+
+      if (!originalData || !glitchedData) {
+        throw new Error(`Missing original or glitched. Keys found: ${Object.keys(parsedPair).join(', ')}`);
       }
 
-      const originalArray = Array.isArray(parsedPair.original) ? parsedPair.original : [parsedPair.original];
-      const glitchedArray = Array.isArray(parsedPair.glitched) ? parsedPair.glitched : [parsedPair.glitched];
+      unwrapped.original = originalData;
+      unwrapped.glitched = glitchedData;
+
+      const originalArray = Array.isArray(unwrapped.original) ? unwrapped.original : [unwrapped.original];
+      const glitchedArray = Array.isArray(unwrapped.glitched) ? unwrapped.glitched : [unwrapped.glitched];
 
       if (originalArray.length === 0 || glitchedArray.length === 0) {
         throw new Error('Empty arrays');
@@ -64,10 +85,10 @@ Return ONLY valid JSON like this example:
 
       const minLength = Math.min(originalArray.length, glitchedArray.length);
 
-      logger.info('Generated memory glitch pair', { difficulty, title: parsedPair.title, model: currentModel });
+      logger.info('Generated memory glitch pair', { difficulty, title: unwrapped.title || parsedPair.title, model: currentModel });
 
       return {
-        title: parsedPair.title || 'A Sweet Memory',
+        title: unwrapped.title || parsedPair.title || 'A Sweet Memory',
         difficulty,
         diffCount: parsedPair.diffCount || config.diffs,
         original: originalArray.slice(0, minLength),
