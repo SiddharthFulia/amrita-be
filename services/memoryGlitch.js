@@ -17,6 +17,9 @@ RULES:
 - "glitched" is the EXACT same array but with exactly ${config.diffs} WORDS replaced with DIFFERENT words. NOT punctuation changes. Swap nouns, adjectives, colors, numbers, or names. Every other word and ALL punctuation must stay identical.
 - "title" is a short 2-3 word title.
 - "diffCount" is ${config.diffs}.
+- Do NOT swap pronouns (he/she/his/her). Swap meaningful words like colors (blue→red), animals (cat→dog), foods (coffee→tea), numbers (three→five), places (park→beach), adjectives (old→new).
+- Do NOT introduce typos or made-up words. Every word must be a real English word.
+- Keep sentences simple and warm.
 
 EXAMPLE:
 {"title":"Morning Walk","original":["I walked to the park with my blue umbrella.","The birds were singing in the tall oak trees.","We sat on the old wooden bench together."],"glitched":["I walked to the garden with my blue umbrella.","The birds were singing in the tall oak trees.","We sat on the old metal bench together."],"diffCount":2}
@@ -25,7 +28,7 @@ Notice: "park" changed to "garden" and "wooden" changed to "metal". Those are re
 
 Now generate a completely NEW one with a different topic. Output ONLY the JSON object.`;
 
-  const modelsToTry = ['gemma2:2b', 'phi3:mini', 'llama3.2:3b'];
+  const modelsToTry = ['llama3.2:3b', 'qwen2.5:3b', 'gemma2:2b'];
   let lastError = null;
 
   for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
