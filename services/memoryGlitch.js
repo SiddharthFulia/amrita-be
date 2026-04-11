@@ -12,15 +12,18 @@ export async function generateTextPair(difficulty = 'easy') {
 
   const prompt = `Generate JSON with EXACTLY these 4 keys: "title", "original", "glitched", "diffCount".
 
-"original" is an array of ${config.paragraphs} sentences about a sweet everyday moment.
-"glitched" is the SAME array but with exactly ${config.diffs} words swapped to different words.
-"title" is a short 2-3 word title.
-"diffCount" is ${config.diffs}.
+RULES:
+- "original" is an array of ${config.paragraphs} sentences about a sweet everyday moment. Each sentence ends with a period.
+- "glitched" is the EXACT same array but with exactly ${config.diffs} WORDS replaced with DIFFERENT words. NOT punctuation changes. Swap nouns, adjectives, colors, numbers, or names. Every other word and ALL punctuation must stay identical.
+- "title" is a short 2-3 word title.
+- "diffCount" is ${config.diffs}.
 
 EXAMPLE:
-{"title":"Morning Walk","original":["I walked to the park with my blue umbrella.","The birds were singing in the tall trees.","We sat on the old wooden bench together."],"glitched":["I walked to the park with my red umbrella.","The birds were singing in the tall trees.","We sat on the old metal bench together."],"diffCount":2}
+{"title":"Morning Walk","original":["I walked to the park with my blue umbrella.","The birds were singing in the tall oak trees.","We sat on the old wooden bench together."],"glitched":["I walked to the garden with my blue umbrella.","The birds were singing in the tall oak trees.","We sat on the old metal bench together."],"diffCount":2}
 
-Now generate a NEW one. Output ONLY the JSON object. No other keys. No nesting. No "diaryEntry" wrapper.`;
+Notice: "park" changed to "garden" and "wooden" changed to "metal". Those are real word swaps. Do NOT just add or remove periods.
+
+Now generate a completely NEW one with a different topic. Output ONLY the JSON object.`;
 
   const modelsToTry = ['gemma2:2b', 'phi3:mini', 'llama3.2:3b'];
   let lastError = null;
