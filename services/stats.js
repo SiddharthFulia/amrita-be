@@ -1,6 +1,5 @@
 import os from 'os';
-
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+import { OLLAMA_URL } from '../helpers/constants.js';
 
 export async function getServerStats() {
   const totalMemory = os.totalmem();

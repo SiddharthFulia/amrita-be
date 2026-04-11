@@ -1,6 +1,5 @@
 import { logger } from '../helpers/logger.js';
-
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+import { OLLAMA_URL } from '../helpers/constants.js';
 
 const SYSTEM_PROMPTS = {
   detective: `You are a mysterious character in a detective game built for someone's girlfriend.

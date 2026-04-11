@@ -1,6 +1,5 @@
 import { logger } from '../helpers/logger.js';
-
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+import { OLLAMA_URL } from '../helpers/constants.js';
 
 const DIFFICULTIES = {
   easy: { paragraphs: 3, diffs: 3 },

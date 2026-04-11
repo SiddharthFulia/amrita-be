@@ -5,7 +5,7 @@
   "description": "Backend for Amrita's website — AI chat via Ollama",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "nodemon server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {

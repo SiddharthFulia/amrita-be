@@ -1,14 +1,7 @@
-// ─── Server Entry Point ──────────────────────────────────────────────────────
-
-import dotenv from 'dotenv';
-dotenv.config();
-
+import { PORT, OLLAMA_URL } from './helpers/constants.js';
 import http from 'http';
 import app from './app.js';
 import { logger } from './helpers/logger.js';
-
-const PORT = process.env.PORT || 4001;
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 
 const server = http.createServer(app);
 

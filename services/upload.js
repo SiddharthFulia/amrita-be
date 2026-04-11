@@ -1,31 +1,38 @@
 import { logger } from '../helpers/logger.js';
-
-const OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
-const OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-const OAUTH_REFRESH_TOKEN = process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
-const SA_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-const SA_KEY = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
+import {
+  GOOGLE_OAUTH_CLIENT_ID,
+  GOOGLE_OAUTH_CLIENT_SECRET,
+  GOOGLE_OAUTH_REFRESH_TOKEN,
+  GOOGLE_DRIVE_FOLDER_ID,
+} from '../helpers/constants.js';
 
 async function getAccessToken() {
+  if (!GOOGLE_OAUTH_CLIENT_ID || !GOOGLE_OAUTH_CLIENT_SECRET || !GOOGLE_OAUTH_REFRESH_TOKEN) {
+    throw new Error(`Missing OAuth env vars: clientId=${!!GOOGLE_OAUTH_CLIENT_ID} secret=${!!GOOGLE_OAUTH_CLIENT_SECRET} refresh=${!!GOOGLE_OAUTH_REFRESH_TOKEN}`);
+  }
+
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: OAUTH_CLIENT_ID,
-      client_secret: OAUTH_CLIENT_SECRET,
-      refresh_token: OAUTH_REFRESH_TOKEN,
+      client_id: GOOGLE_OAUTH_CLIENT_ID,
+      client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
+      refresh_token: GOOGLE_OAUTH_REFRESH_TOKEN,
       grant_type: 'refresh_token',
     }),
   });
-  if (!tokenResponse.ok) throw new Error('Failed to get access token');
+
   const tokenData = await tokenResponse.json();
+  if (!tokenResponse.ok) {
+    logger.error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
+    throw new Error(`Failed to get access token: ${tokenData.error_description || tokenData.error}`);
+  }
   return tokenData.access_token;
 }
 
 async function findOrCreateFolder(accessToken, folderName) {
   const searchResponse = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q='${DRIVE_FOLDER_ID}'+in+parents+and+name='${folderName}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    `https://www.googleapis.com/drive/v3/files?q='${GOOGLE_DRIVE_FOLDER_ID}'+in+parents+and+name='${folderName}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const searchData = await searchResponse.json();
@@ -34,7 +41,7 @@ async function findOrCreateFolder(accessToken, folderName) {
   const createResponse = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [DRIVE_FOLDER_ID] }),
+    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: [GOOGLE_DRIVE_FOLDER_ID] }),
   });
   const createData = await createResponse.json();
   return createData.id;
@@ -44,18 +51,11 @@ export async function uploadToDrive(fileBuffer, fileName, contentType, folderNam
   const accessToken = await getAccessToken();
 
   const parentFolderId = folderName === 'gallery'
-    ? DRIVE_FOLDER_ID
+    ? GOOGLE_DRIVE_FOLDER_ID
     : await findOrCreateFolder(accessToken, folderName);
 
   const metadata = JSON.stringify({ name: fileName, parents: [parentFolderId] });
-
   const boundary = '-----BOUNDARY' + Date.now();
-  const bodyParts = [
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
-    `--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`,
-  ];
-
-  const bodyStart = Buffer.from(bodyParts[0] + bodyParts[1].split('\r\n\r\n')[0] + '\r\n\r\n', 'utf-8');
 
   const startBuffer = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
   const endBuffer = Buffer.from(`\r\n--${boundary}--`);
