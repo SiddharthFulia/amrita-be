@@ -9,12 +9,13 @@ export const getImageSearch = async (req, res) => {
   try {
     const query = (req.query.q || '').trim();
     const count = Math.min(parseInt(req.query.count || '20'), 40);
+    const page = parseInt(req.query.page || '1');
 
     if (!query) {
       return responseHelper.error(res, 'q parameter required', 400);
     }
 
-    const cacheKey = `${query}-${count}`;
+    const cacheKey = `${query}-${count}-${page}`;
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
       logger.info(`IMAGE SEARCH CACHE HIT | "${query}"`);
@@ -23,7 +24,7 @@ export const getImageSearch = async (req, res) => {
 
     logger.info(`IMAGE SEARCH | "${query}" | count=${count}`);
     const startTime = Date.now();
-    const images = await searchImages(query, count);
+    const images = await searchImages(query, count, page);
     const responseTime = Date.now() - startTime;
 
     cache.set(cacheKey, { images, timestamp: Date.now() });

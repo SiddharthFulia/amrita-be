@@ -14,7 +14,7 @@ async function getBrowser() {
   return browserInstance;
 }
 
-export async function searchImages(query, count = 20) {
+export async function searchImages(query, count = 20, page = 1) {
   const browser = await getBrowser();
   const page = await browser.newPage({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
@@ -22,7 +22,8 @@ export async function searchImages(query, count = 20) {
   });
 
   try {
-    const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&form=HDRSC3&first=1`;
+    const startIndex = (page - 1) * count + 1;
+    const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&form=HDRSC3&first=${startIndex}`;
     await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
