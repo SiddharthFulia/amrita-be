@@ -14,27 +14,27 @@ async function getBrowser() {
   return browserInstance;
 }
 
-export async function searchImages(query, count = 20, page = 1) {
+export async function searchImages(query, count = 20, pageNumber = 1) {
   const browser = await getBrowser();
-  const page = await browser.newPage({
+  const browserPage = await browser.newPage({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
     viewport: { width: 1366, height: 768 },
   });
 
   try {
-    const startIndex = (page - 1) * count + 1;
+    const startIndex = (pageNumber - 1) * count + 1;
     const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&form=HDRSC3&first=${startIndex}`;
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await browserPage.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await browserPage.waitForTimeout(2000);
 
-    await page.evaluate(async () => {
+    await browserPage.evaluate(async () => {
       for (let i = 0; i < 3; i++) {
         window.scrollBy(0, window.innerHeight * 2);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     });
 
-    const results = await page.evaluate((limit) => {
+    const results = await browserPage.evaluate((limit) => {
       const images = [];
       const seenUrls = new Set();
       const nodes = [...document.querySelectorAll('.iusc')];
@@ -67,11 +67,11 @@ export async function searchImages(query, count = 20, page = 1) {
       return images;
     }, count);
 
-    await page.close();
+    await browserPage.close();
     logger.info(`Image search: "${query}" → ${results.length} results`);
     return results;
   } catch (searchError) {
-    await page.close();
+    await browserPage.close();
     throw searchError;
   }
 }
