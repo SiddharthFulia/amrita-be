@@ -1,6 +1,12 @@
 import cv2
-import dlib
 import numpy as np
+
+try:
+    import dlib
+    DLIB_AVAILABLE = True
+except ImportError:
+    DLIB_AVAILABLE = False
+    print("WARNING: dlib not installed — using Haar cascades only (no 68 landmarks)")
 import base64
 import json
 from flask import Flask, request, jsonify
@@ -11,15 +17,17 @@ app = Flask(__name__)
 CORS(app)
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "shape_predictor_68_face_landmarks.dat")
-detector = dlib.get_frontal_face_detector()
+detector = None
 predictor = None
 
-if os.path.exists(MODEL_PATH):
-    predictor = dlib.shape_predictor(MODEL_PATH)
-    print(f"Loaded face landmark model from {MODEL_PATH}")
-else:
-    print(f"WARNING: Model not found at {MODEL_PATH}")
-    print("Download it: wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2 && bunzip2 shape_predictor_68_face_landmarks.dat.bz2")
+if DLIB_AVAILABLE:
+    detector = dlib.get_frontal_face_detector()
+    if os.path.exists(MODEL_PATH):
+        predictor = dlib.shape_predictor(MODEL_PATH)
+        print(f"Loaded face landmark model from {MODEL_PATH}")
+    else:
+        print(f"WARNING: Model not found at {MODEL_PATH}")
+        print("Download it: wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2 && bunzip2 shape_predictor_68_face_landmarks.dat.bz2")
 
 FACE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 SMILE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_smile.xml')
@@ -129,26 +137,37 @@ def analyze():
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         image_height, image_width = image.shape[:2]
 
-        faces = detector(gray, 0)
+        dlib_faces = []
+        if DLIB_AVAILABLE and detector:
+            dlib_faces = detector(gray, 1)
 
-        if len(faces) == 0:
-            haar_faces = FACE_CASCADE.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
-            for (fx, fy, fw, fh) in haar_faces:
-                faces.append(dlib.rectangle(fx, fy, fx + fw, fy + fh))
+        haar_faces_raw = FACE_CASCADE.detectMultiScale(gray, 1.15, 4, minSize=(30, 30))
+
+        face_rects = []
+        for face_rect in dlib_faces:
+            face_rects.append({'left': face_rect.left(), 'top': face_rect.top(), 'width': face_rect.width(), 'height': face_rect.height(), 'dlib_rect': face_rect})
+
+        if len(face_rects) == 0:
+            for (fx, fy, fw, fh) in haar_faces_raw:
+                dlib_rect = None
+                if DLIB_AVAILABLE:
+                    dlib_rect = dlib.rectangle(fx, fy, fx + fw, fy + fh)
+                face_rects.append({'left': int(fx), 'top': int(fy), 'width': int(fw), 'height': int(fh), 'dlib_rect': dlib_rect})
 
         results = []
-        for face_rect in faces:
+        for face_info in face_rects:
             face_data = {
                 'boundingBox': {
-                    'x': int(face_rect.left()),
-                    'y': int(face_rect.top()),
-                    'width': int(face_rect.width()),
-                    'height': int(face_rect.height()),
+                    'x': int(face_info['left']),
+                    'y': int(face_info['top']),
+                    'width': int(face_info['width']),
+                    'height': int(face_info['height']),
                 },
                 'confidence': round(0.85 + np.random.uniform(0, 0.14), 2),
             }
+            face_rect = face_info.get('dlib_rect')
 
-            if predictor:
+            if predictor and face_rect:
                 shape = predictor(gray, face_rect)
                 landmark_points = [(shape.part(i).x, shape.part(i).y) for i in range(68)]
                 face_data['landmarks'] = {

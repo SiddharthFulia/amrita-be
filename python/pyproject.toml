@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "face-service"
+version = "1.0.0"
+description = "OpenCV + dlib face analysis service"
+authors = ["Siddharth"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+opencv-python-headless = "^4.9.0"
+numpy = "^1.26.0"
+flask = "^3.0.0"
+flask-cors = "^4.0.0"
+
+[tool.poetry.extras]
+full = ["dlib"]
+
+[tool.poetry.group.linux.dependencies]
+dlib = "^19.24.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
