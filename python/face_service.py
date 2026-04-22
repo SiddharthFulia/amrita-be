@@ -1,39 +1,51 @@
-import cv2
-import numpy as np
+"""Face detection (MediaPipe) + Object detection (YOLOv8) service."""
 
-try:
-    import dlib
-    DLIB_AVAILABLE = True
-except ImportError:
-    DLIB_AVAILABLE = False
-    print("WARNING: dlib not installed — using Haar cascades only (no 68 landmarks)")
+import os
 import base64
-import json
+import math
+import numpy as np
+import cv2
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
 
 app = Flask(__name__)
 CORS(app)
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "shape_predictor_68_face_landmarks.dat")
-detector = None
-predictor = None
+import mediapipe as mp
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(
+    static_image_mode=True,
+    max_num_faces=5,
+    refine_landmarks=True,
+    min_detection_confidence=0.5,
+)
+mp_face_detection = mp.solutions.face_detection
+face_detector = mp_face_detection.FaceDetection(
+    model_selection=0,
+    min_detection_confidence=0.5,
+)
+print("MediaPipe Face Mesh + Detection loaded")
 
-if DLIB_AVAILABLE:
-    detector = dlib.get_frontal_face_detector()
-    if os.path.exists(MODEL_PATH):
-        predictor = dlib.shape_predictor(MODEL_PATH)
-        print(f"Loaded face landmark model from {MODEL_PATH}")
-    else:
-        print(f"WARNING: Model not found at {MODEL_PATH}")
-        print("Download it: wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2 && bunzip2 shape_predictor_68_face_landmarks.dat.bz2")
+MP_TO_68 = [
+    234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 365, 288, 323,
+    70, 63, 105, 66, 107,
+    336, 296, 334, 293, 300,
+    168, 6, 197, 195,
+    5, 4, 45, 275, 1,
+    33, 160, 158, 133, 153, 144,
+    362, 385, 387, 263, 373, 380,
+    61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 321,
+    78, 82, 13, 312, 308, 317, 14, 87,
+]
 
-FACE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-SMILE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_smile.xml')
-EYE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+OUTER_LIP_LOOP = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185]
+INNER_LIP_LOOP = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
+LEFT_EYE = [33, 160, 158, 133, 153, 144]
+RIGHT_EYE = [362, 385, 387, 263, 373, 380]
+LEFT_EYEBROW = [70, 63, 105, 66, 107]
+RIGHT_EYEBROW = [336, 296, 334, 293, 300]
 
-LANDMARK_NAMES = {
+LANDMARK_GROUPS = {
     'jaw': list(range(0, 17)),
     'right_eyebrow': list(range(17, 22)),
     'left_eyebrow': list(range(22, 27)),
@@ -46,166 +58,270 @@ LANDMARK_NAMES = {
 }
 
 
-def decode_image(base64_string):
-    if ',' in base64_string:
-        base64_string = base64_string.split(',')[1]
-    image_bytes = base64.b64decode(base64_string)
-    numpy_array = np.frombuffer(image_bytes, np.uint8)
-    image = cv2.imdecode(numpy_array, cv2.IMREAD_COLOR)
-    return image
+def decode_image(image_data):
+    if ',' in image_data:
+        image_data = image_data.split(',')[1]
+    img_bytes = base64.b64decode(image_data)
+    arr = np.frombuffer(img_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    if img.dtype != np.uint8:
+        img = img.astype(np.uint8)
+    if len(img.shape) == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    elif img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+    return img
 
 
-def estimate_mood(landmarks, face_rect):
-    if landmarks is None:
-        return 'unknown', 0.0
-
-    mouth_top = landmarks[62]
-    mouth_bottom = landmarks[66]
-    mouth_left = landmarks[48]
-    mouth_right = landmarks[54]
-
-    mouth_open = abs(mouth_bottom[1] - mouth_top[1])
-    mouth_width = abs(mouth_right[0] - mouth_left[0])
-    mouth_ratio = mouth_open / max(mouth_width, 1)
-
-    left_lip_corner = landmarks[48]
-    right_lip_corner = landmarks[54]
-    mouth_center_y = (landmarks[62][1] + landmarks[66][1]) / 2
-    corner_avg_y = (left_lip_corner[1] + right_lip_corner[1]) / 2
-
-    smile_score = (mouth_center_y - corner_avg_y) / max(face_rect.height(), 1)
-
-    left_eye_top = landmarks[37]
-    left_eye_bottom = landmarks[41]
-    right_eye_top = landmarks[43]
-    right_eye_bottom = landmarks[47]
-
-    left_eye_ratio = abs(left_eye_bottom[1] - left_eye_top[1]) / max(abs(landmarks[39][0] - landmarks[36][0]), 1)
-    right_eye_ratio = abs(right_eye_bottom[1] - right_eye_top[1]) / max(abs(landmarks[45][0] - landmarks[42][0]), 1)
-    eye_openness = (left_eye_ratio + right_eye_ratio) / 2
-
-    left_brow = np.mean([landmarks[i][1] for i in range(17, 22)])
-    right_brow = np.mean([landmarks[i][1] for i in range(22, 27)])
-    eye_center_y = (landmarks[37][1] + landmarks[43][1]) / 2
-    brow_raise = (eye_center_y - (left_brow + right_brow) / 2) / max(face_rect.height(), 1)
-
-    if mouth_ratio > 0.35:
-        return 'surprised', min(0.5 + mouth_ratio, 0.95)
-    elif smile_score > 0.02:
-        confidence = min(0.6 + smile_score * 5, 0.98)
-        return 'happy', confidence
-    elif smile_score < -0.015:
-        return 'sad', min(0.5 + abs(smile_score) * 5, 0.85)
-    elif brow_raise > 0.08:
-        return 'angry', min(0.5 + brow_raise * 3, 0.8)
-    elif eye_openness < 0.15:
-        return 'sleepy', 0.7
-    else:
-        return 'neutral', 0.75
+def eye_aspect_ratio(landmarks, indices, w, h):
+    pts = [(landmarks[i].x * w, landmarks[i].y * h) for i in indices]
+    v1 = math.dist(pts[1], pts[5])
+    v2 = math.dist(pts[2], pts[4])
+    ho = math.dist(pts[0], pts[3])
+    return (v1 + v2) / (2.0 * ho) if ho > 0 else 0
 
 
-def get_face_angle(landmarks):
-    left_eye_center = np.mean([(landmarks[36][0], landmarks[36][1]), (landmarks[39][0], landmarks[39][1])], axis=0)
-    right_eye_center = np.mean([(landmarks[42][0], landmarks[42][1]), (landmarks[45][0], landmarks[45][1])], axis=0)
-    delta_x = right_eye_center[0] - left_eye_center[0]
-    delta_y = right_eye_center[1] - left_eye_center[1]
-    angle = np.degrees(np.arctan2(delta_y, delta_x))
-    return round(float(angle), 2)
+def detect_mood(landmarks, w, h):
+    try:
+        def pt(i):
+            return (landmarks[i].x * w, landmarks[i].y * h)
+
+        mouth_top = pt(13)
+        mouth_bottom = pt(14)
+        mouth_left = pt(61)
+        mouth_right = pt(291)
+
+        mouth_open = abs(mouth_bottom[1] - mouth_top[1])
+        mouth_width = abs(mouth_right[0] - mouth_left[0])
+        mouth_ratio = mouth_open / max(mouth_width, 1)
+
+        lip_center_y = (mouth_top[1] + mouth_bottom[1]) / 2
+        corner_avg_y = (pt(61)[1] + pt(291)[1]) / 2
+        face_h = abs(pt(10)[1] - pt(152)[1])
+        smile_score = (lip_center_y - corner_avg_y) / max(face_h, 1)
+
+        left_ear = eye_aspect_ratio(landmarks, LEFT_EYE, w, h)
+        right_ear = eye_aspect_ratio(landmarks, RIGHT_EYE, w, h)
+        eye_openness = (left_ear + right_ear) / 2
+
+        left_brow_y = np.mean([landmarks[i].y for i in LEFT_EYEBROW]) * h
+        right_brow_y = np.mean([landmarks[i].y for i in RIGHT_EYEBROW]) * h
+        eye_center_y = (landmarks[159].y * h + landmarks[386].y * h) / 2
+        brow_raise = (eye_center_y - (left_brow_y + right_brow_y) / 2) / max(face_h, 1)
+
+        if mouth_ratio > 0.35:
+            return 'surprised', min(0.5 + mouth_ratio, 0.95)
+        elif smile_score > 0.02:
+            return 'happy', min(0.6 + smile_score * 5, 0.98)
+        elif smile_score < -0.015:
+            return 'sad', min(0.5 + abs(smile_score) * 5, 0.85)
+        elif brow_raise > 0.08:
+            return 'angry', min(0.5 + brow_raise * 3, 0.8)
+        elif eye_openness < 0.15:
+            return 'sleepy', 0.7
+        else:
+            return 'neutral', 0.75
+    except Exception:
+        return 'neutral', 0.5
 
 
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({
-        'status': 'ok',
-        'model_loaded': predictor is not None,
-        'opencv_version': cv2.__version__,
-    })
+def get_face_angle(landmarks, w, h):
+    left_eye = (landmarks[33].x * w, landmarks[33].y * h)
+    right_eye = (landmarks[263].x * w, landmarks[263].y * h)
+    dx = right_eye[0] - left_eye[0]
+    dy = right_eye[1] - left_eye[1]
+    return round(math.degrees(math.atan2(dy, dx)), 2)
 
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
     try:
         data = request.json
-        image_data = data.get('image')
-        if not image_data:
-            return jsonify({'error': 'image required'}), 400
+        if not data or 'image' not in data:
+            return jsonify({'error': 'No image provided'}), 400
 
-        image = decode_image(image_data)
-        if image is None:
-            return jsonify({'error': 'failed to decode image'}), 400
+        img = decode_image(data['image'])
+        if img is None:
+            return jsonify({'error': 'Invalid image'}), 400
 
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        image_height, image_width = image.shape[:2]
+        h, w = img.shape[:2]
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        dlib_faces = []
-        if DLIB_AVAILABLE and detector:
-            dlib_faces = detector(gray, 1)
+        mesh_results = face_mesh.process(rgb)
+        det_results = face_detector.process(rgb)
 
-        haar_faces_raw = FACE_CASCADE.detectMultiScale(gray, 1.15, 4, minSize=(30, 30))
+        faces = []
 
-        face_rects = []
-        for face_rect in dlib_faces:
-            face_rects.append({'left': face_rect.left(), 'top': face_rect.top(), 'width': face_rect.width(), 'height': face_rect.height(), 'dlib_rect': face_rect})
+        if mesh_results.multi_face_landmarks:
+            for i, face_landmarks in enumerate(mesh_results.multi_face_landmarks):
+                lm = face_landmarks.landmark
 
-        if len(face_rects) == 0:
-            for (fx, fy, fw, fh) in haar_faces_raw:
-                dlib_rect = None
-                if DLIB_AVAILABLE:
-                    dlib_rect = dlib.rectangle(fx, fy, fx + fw, fy + fh)
-                face_rects.append({'left': int(fx), 'top': int(fy), 'width': int(fw), 'height': int(fh), 'dlib_rect': dlib_rect})
+                xs = [l.x * w for l in lm]
+                ys = [l.y * h for l in lm]
+                x1, y1 = int(min(xs)), int(min(ys))
+                x2, y2 = int(max(xs)), int(max(ys))
 
-        results = []
-        for face_info in face_rects:
-            face_data = {
-                'boundingBox': {
-                    'x': int(face_info['left']),
-                    'y': int(face_info['top']),
-                    'width': int(face_info['width']),
-                    'height': int(face_info['height']),
-                },
-                'confidence': round(0.85 + np.random.uniform(0, 0.14), 2),
-            }
-            face_rect = face_info.get('dlib_rect')
+                confidence = 0.9
+                if det_results.detections and i < len(det_results.detections):
+                    confidence = det_results.detections[i].score[0]
 
-            if predictor and face_rect:
-                shape = predictor(gray, face_rect)
-                landmark_points = [(shape.part(i).x, shape.part(i).y) for i in range(68)]
-                face_data['landmarks'] = {
-                    'points': [{'x': int(point[0]), 'y': int(point[1])} for point in landmark_points],
-                    'groups': {},
-                }
-                for group_name, indices in LANDMARK_NAMES.items():
-                    face_data['landmarks']['groups'][group_name] = [
-                        {'x': int(landmark_points[i][0]), 'y': int(landmark_points[i][1])} for i in indices
-                    ]
+                points_68 = []
+                for idx in MP_TO_68[:68]:
+                    points_68.append({'x': round(lm[idx].x * w, 1), 'y': round(lm[idx].y * h, 1)})
+                while len(points_68) < 68:
+                    points_68.append(points_68[-1])
 
-                mood, mood_confidence = estimate_mood(landmark_points, face_rect)
-                face_data['mood'] = mood
-                face_data['moodConfidence'] = round(float(mood_confidence), 2)
-                face_data['faceAngle'] = get_face_angle(landmark_points)
+                mood, mood_conf = detect_mood(lm, w, h)
+                angle = get_face_angle(lm, w, h)
 
-                mouth_open_ratio = abs(landmark_points[62][1] - landmark_points[66][1]) / max(face_rect.height(), 1)
-                left_eye_ratio = abs(landmark_points[41][1] - landmark_points[37][1]) / max(abs(landmark_points[39][0] - landmark_points[36][0]), 1)
-                right_eye_ratio = abs(landmark_points[47][1] - landmark_points[43][1]) / max(abs(landmark_points[45][0] - landmark_points[42][0]), 1)
+                left_ear = eye_aspect_ratio(lm, LEFT_EYE, w, h)
+                right_ear = eye_aspect_ratio(lm, RIGHT_EYE, w, h)
+                mouth_open_ratio = abs(lm[14].y * h - lm[13].y * h) / max(abs(lm[291].x * w - lm[61].x * w), 1)
 
-                face_data['features'] = {
-                    'mouthOpen': round(float(mouth_open_ratio), 3),
-                    'leftEyeOpen': round(float(left_eye_ratio), 3),
-                    'rightEyeOpen': round(float(right_eye_ratio), 3),
-                    'smiling': mood == 'happy',
-                }
+                outer_lip_pts = [{'x': round(lm[idx].x * w, 1), 'y': round(lm[idx].y * h, 1)} for idx in OUTER_LIP_LOOP]
+                inner_lip_pts = [{'x': round(lm[idx].x * w, 1), 'y': round(lm[idx].y * h, 1)} for idx in INNER_LIP_LOOP]
+                left_eye_pts = [{'x': round(lm[idx].x * w, 1), 'y': round(lm[idx].y * h, 1)} for idx in LEFT_EYE]
+                right_eye_pts = [{'x': round(lm[idx].x * w, 1), 'y': round(lm[idx].y * h, 1)} for idx in RIGHT_EYE]
 
-            results.append(face_data)
+                landmark_groups = {}
+                for group_name, indices in LANDMARK_GROUPS.items():
+                    landmark_groups[group_name] = [{'x': round(points_68[idx]['x'], 1), 'y': round(points_68[idx]['y'], 1)} for idx in indices if idx < len(points_68)]
+
+                landmark_groups['outerLip'] = outer_lip_pts
+                landmark_groups['innerLip'] = inner_lip_pts
+                landmark_groups['leftEye'] = left_eye_pts
+                landmark_groups['rightEye'] = right_eye_pts
+
+                faces.append({
+                    'boundingBox': {
+                        'x': max(0, x1), 'y': max(0, y1),
+                        'width': x2 - x1, 'height': y2 - y1,
+                    },
+                    'confidence': round(float(confidence), 2),
+                    'landmarks': {
+                        'points': points_68,
+                        'groups': landmark_groups,
+                    },
+                    'mood': mood,
+                    'moodConfidence': round(mood_conf, 2),
+                    'faceAngle': angle,
+                    'features': {
+                        'mouthOpen': round(mouth_open_ratio, 3),
+                        'leftEyeOpen': round(left_ear, 3),
+                        'rightEyeOpen': round(right_ear, 3),
+                        'smiling': mood == 'happy',
+                    },
+                })
 
         return jsonify({
-            'faces': results,
-            'faceCount': len(results),
-            'imageSize': {'width': image_width, 'height': image_height},
+            'faces': faces,
+            'faceCount': len(faces),
+            'imageSize': {'width': w, 'height': h},
         })
 
-    except Exception as exception:
-        return jsonify({'error': str(exception)}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# YOLOv8-nano object detection via OpenCV DNN
+
+YOLO_MODEL = None
+YOLO_CLASSES = ['person','bicycle','car','motorcycle','airplane','bus','train','truck','boat',
+    'traffic light','fire hydrant','stop sign','parking meter','bench','bird','cat','dog','horse',
+    'sheep','cow','elephant','bear','zebra','giraffe','backpack','umbrella','handbag','tie',
+    'suitcase','frisbee','skis','snowboard','sports ball','kite','baseball bat','baseball glove',
+    'skateboard','surfboard','tennis racket','bottle','wine glass','cup','fork','knife','spoon',
+    'bowl','banana','apple','sandwich','orange','broccoli','carrot','hot dog','pizza','donut',
+    'cake','chair','couch','potted plant','bed','dining table','toilet','tv','laptop','mouse',
+    'remote','keyboard','cell phone','microwave','oven','toaster','sink','refrigerator','book',
+    'clock','vase','scissors','teddy bear','hair drier','toothbrush']
+
+def load_yolo():
+    global YOLO_MODEL
+    model_path = os.path.join(os.path.dirname(__file__), 'yolov8n.onnx')
+    if os.path.exists(model_path):
+        YOLO_MODEL = cv2.dnn.readNetFromONNX(model_path)
+        print(f"Loaded YOLOv8n from {model_path}")
+    else:
+        print(f"YOLOv8n not found at {model_path} — object detection disabled")
+
+load_yolo()
+
+
+@app.route('/detect-objects', methods=['POST'])
+def detect_objects():
+    if YOLO_MODEL is None:
+        return jsonify({'error': 'YOLOv8 model not loaded', 'objects': [], 'count': 0}), 200
+
+    try:
+        data = request.json
+        if not data or 'image' not in data:
+            return jsonify({'error': 'No image provided'}), 400
+
+        img = decode_image(data['image'])
+        if img is None:
+            return jsonify({'error': 'Invalid image'}), 400
+
+        h, w = img.shape[:2]
+        threshold = float(data.get('threshold', 0.5))
+
+        blob = cv2.dnn.blobFromImage(img, 1/255.0, (640, 640), swapRB=True, crop=False)
+        YOLO_MODEL.setInput(blob)
+        outputs = YOLO_MODEL.forward()
+
+        out = outputs[0].T if len(outputs[0].shape) == 3 else outputs[0]
+        if out.shape[0] == 84:
+            out = out.T
+
+        objects = []
+        for detection in out:
+            scores = detection[4:]
+            class_id = int(np.argmax(scores))
+            confidence = float(scores[class_id])
+            if confidence < threshold:
+                continue
+
+            cx, cy, bw, bh = detection[:4]
+            x1 = int((cx - bw/2) * w / 640)
+            y1 = int((cy - bh/2) * h / 640)
+            x2 = int((cx + bw/2) * w / 640)
+            y2 = int((cy + bh/2) * h / 640)
+
+            class_name = YOLO_CLASSES[class_id] if class_id < len(YOLO_CLASSES) else f'class_{class_id}'
+            objects.append({
+                'class': class_name,
+                'score': round(confidence, 3),
+                'bbox': [max(0, x1), max(0, y1), min(w, x2) - max(0, x1), min(h, y2) - max(0, y1)],
+            })
+
+        if objects:
+            boxes = [o['bbox'] for o in objects]
+            scores_list = [o['score'] for o in objects]
+            indices = cv2.dnn.NMSBoxes(boxes, scores_list, threshold, 0.4)
+            if len(indices) > 0:
+                indices = indices.flatten() if hasattr(indices, 'flatten') else [i[0] if isinstance(i, (list, tuple)) else i for i in indices]
+                objects = [objects[i] for i in indices]
+
+        return jsonify({
+            'objects': objects[:20],
+            'count': len(objects),
+            'imageSize': {'width': w, 'height': h},
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e), 'objects': [], 'count': 0}), 500
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({
+        'status': 'ok',
+        'face_detection': 'mediapipe',
+        'yolo_loaded': YOLO_MODEL is not None,
+    })
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000)

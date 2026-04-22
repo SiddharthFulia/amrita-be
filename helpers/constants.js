@@ -8,3 +8,4 @@ export const GOOGLE_OAUTH_REFRESH_TOKEN = process.env.GOOGLE_OAUTH_REFRESH_TOKEN
 export const GOOGLE_SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
 export const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
 export const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL || 'http://localhost:5000';
+export const GROQ_API_KEY = process.env.GROQ_API_KEY;

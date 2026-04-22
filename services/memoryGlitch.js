@@ -1,5 +1,6 @@
 import { logger } from '../helpers/logger.js';
-import { OLLAMA_URL } from '../helpers/constants.js';
+import { OLLAMA_URL, GROQ_API_KEY } from '../helpers/constants.js';
+import { chatGroq } from './groq.js';
 
 const DIFFICULTIES = {
   easy: { paragraphs: 3, diffs: 3 },
@@ -28,8 +29,46 @@ Notice: "park" changed to "garden" and "wooden" changed to "metal". Those are re
 
 Now generate a completely NEW one with a different topic. Output ONLY the JSON object.`;
 
-  const modelsToTry = ['llama3.2:3b', 'qwen2.5:3b', 'gemma2:2b'];
   let lastError = null;
+
+  // Try Groq first (sub-1s response)
+  if (GROQ_API_KEY) {
+    try {
+      logger.info('Memory glitch trying Groq (llama-3.1-8b)');
+      const groqResult = await chatGroq(prompt, [], 'llama-3.1-8b', { system: 'Output ONLY valid JSON. No markdown. No code fences. No explanation. Just the JSON object.', maxTokens: 600, temperature: 0.9 });
+      const rawContent = groqResult.reply;
+      if (rawContent) {
+        logger.info(`Memory glitch Groq raw: ${rawContent.substring(0, 100)}...`);
+        const cleanedContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsedPair = JSON.parse(jsonMatch[0]);
+          const unwrapped = parsedPair.original ? parsedPair : parsedPair.diaryEntry || parsedPair.data || parsedPair.entry || parsedPair;
+          const originalData = unwrapped.original || unwrapped.paragraphs || unwrapped.sentences;
+          const glitchedData = unwrapped.glitched || unwrapped.modified || unwrapped.changed;
+          if (originalData && glitchedData) {
+            const originalArray = Array.isArray(originalData) ? originalData : [originalData];
+            const glitchedArray = Array.isArray(glitchedData) ? glitchedData : [glitchedData];
+            const minLength = Math.min(originalArray.length, glitchedArray.length);
+            logger.info('Generated memory glitch pair via Groq', { difficulty, title: unwrapped.title || parsedPair.title });
+            return {
+              title: unwrapped.title || parsedPair.title || 'A Sweet Memory',
+              difficulty,
+              diffCount: parsedPair.diffCount || config.diffs,
+              original: originalArray.slice(0, minLength),
+              glitched: glitchedArray.slice(0, minLength),
+            };
+          }
+        }
+      }
+    } catch (groqError) {
+      lastError = groqError;
+      logger.warn(`Memory glitch Groq failed: ${groqError.message}, falling back to Ollama...`);
+    }
+  }
+
+  // Fallback to Ollama models
+  const modelsToTry = ['llama3.2:3b', 'qwen2.5:3b', 'gemma2:2b'];
 
   for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
     const currentModel = modelsToTry[attempt];

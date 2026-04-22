@@ -4,4 +4,6 @@ node_modules
 *.log
 python/venv/
 python/shape_predictor_68_face_landmarks.dat
+python/shape_predictor_68_face_landmarks.dat.bz2
+python/yolov8n.onnx
 python/__pycache__/
