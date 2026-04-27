@@ -2,13 +2,23 @@ import { HF_TOKEN, GOOGLE_TTS_KEY } from '../helpers/constants.js';
 
 const HF_API = 'https://router.huggingface.co/hf-inference/models';
 
+const MODEL_ALIASES = {
+  'flux': 'black-forest-labs/FLUX.1-schnell',
+  'flux-schnell': 'black-forest-labs/FLUX.1-schnell',
+  'flux-dev': 'black-forest-labs/FLUX.1-dev',
+  'sd': 'stabilityai/stable-diffusion-xl-base-1.0',
+  'sdxl': 'stabilityai/stable-diffusion-xl-base-1.0',
+};
+
 export async function generateImage(prompt, model = 'black-forest-labs/FLUX.1-schnell') {
-  if (!HF_TOKEN) throw new Error('Hugging Face token not configured');
+  model = MODEL_ALIASES[model] || model;
+  const token = HF_TOKEN || process.env.HF_TOKEN;
+  if (!token) throw new Error('Hugging Face token not configured');
 
   const hfResponse = await fetch(`${HF_API}/${model}`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${HF_TOKEN}`,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -29,11 +39,12 @@ export async function generateImage(prompt, model = 'black-forest-labs/FLUX.1-sc
 }
 
 export async function summarizeText(text, model = 'facebook/bart-large-cnn') {
-  if (!HF_TOKEN) throw new Error('Hugging Face token not configured');
+  const token = HF_TOKEN || process.env.HF_TOKEN;
+  if (!token) throw new Error('Hugging Face token not configured');
 
   const hfResponse = await fetch(`${HF_API}/${model}`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${HF_TOKEN}`, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ inputs: text, parameters: { max_length: 150, min_length: 30 } }),
   });
 
@@ -61,7 +72,8 @@ const ALLOWED_VOICES = [
 ];
 
 export async function textToSpeech(text, voice = 'en-US-Standard-D', lang = 'en-US') {
-  if (!GOOGLE_TTS_KEY) throw new Error('Google TTS key not configured');
+  const ttsKey = GOOGLE_TTS_KEY || process.env.GOOGLE_TTS_KEY;
+  if (!ttsKey) throw new Error('Google TTS key not configured');
   if (!text || text.length === 0) throw new Error('Text is required');
   if (text.length > 200) throw new Error(`Text too long (${text.length} chars). Max 200 characters.`);
 
@@ -77,7 +89,7 @@ export async function textToSpeech(text, voice = 'en-US-Standard-D', lang = 'en-
   if (ttsDailyChars + text.length > TTS_MAX_DAILY_CHARS) throw new Error(`TTS daily limit reached.`);
   ttsDailyChars += text.length;
 
-  const ttsResponse = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_TTS_KEY}`, {
+  const ttsResponse = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${ttsKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
