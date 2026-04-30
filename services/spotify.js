@@ -244,6 +244,35 @@ export async function transferPlayback(deviceId, play = true) {
   return spotifyApi('PUT', '/me/player', { device_ids: [deviceId], play });
 }
 
+// state: 'off' | 'track' | 'context'
+export async function setRepeat(state, deviceId) {
+  const params = new URLSearchParams({ state });
+  if (deviceId) params.set('device_id', deviceId);
+  return spotifyApi('PUT', `/me/player/repeat?${params.toString()}`);
+}
+
+export async function setShuffle(on, deviceId) {
+  const params = new URLSearchParams({ state: String(!!on) });
+  if (deviceId) params.set('device_id', deviceId);
+  return spotifyApi('PUT', `/me/player/shuffle?${params.toString()}`);
+}
+
+export async function getQueue() {
+  return spotifyApi('GET', '/me/player/queue');
+}
+
+export async function addToQueue(uri, deviceId) {
+  const params = new URLSearchParams({ uri });
+  if (deviceId) params.set('device_id', deviceId);
+  return spotifyApi('POST', `/me/player/queue?${params.toString()}`);
+}
+
+export async function seek(positionMs, deviceId) {
+  const params = new URLSearchParams({ position_ms: String(Math.round(positionMs)) });
+  if (deviceId) params.set('device_id', deviceId);
+  return spotifyApi('PUT', `/me/player/seek?${params.toString()}`);
+}
+
 /**
  * Get a track's metadata (includes preview_url if available).
  */
@@ -257,6 +286,16 @@ export async function getPlaylist(playlistId) {
 
 export async function getAlbum(albumId) {
   return spotifyApi('GET', `/albums/${albumId}`);
+}
+
+export async function getArtist(artistId) {
+  return spotifyApi('GET', `/artists/${artistId}`);
+}
+
+export async function getArtistAlbums(artistId, limit = 10) {
+  // Spotify caps this at 10 for new dev apps (post Nov 2024 quota changes)
+  const safeLimit = Math.min(Math.max(parseInt(limit) || 10, 1), 10);
+  return spotifyApi('GET', `/artists/${artistId}/albums?include_groups=album,single&limit=${safeLimit}`);
 }
 
 export async function getSavedTracks(limit = 50, offset = 0) {

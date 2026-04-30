@@ -18,6 +18,7 @@ import {
   postPlay as spotifyPlay, postPause as spotifyPause, postNext as spotifyNext,
   postPrevious as spotifyPrevious, postVolume as spotifyVolume, postTransfer as spotifyTransfer,
   getPreview as spotifyPreview, getPlaylist as spotifyPlaylist, getAlbum as spotifyAlbum,
+  getArtist as spotifyArtist,
   getSavedTracks as spotifySavedTracks, putSavedTrack as spotifySaveTrack,
   deleteSavedTrack as spotifyUnsaveTrack, checkSavedTracks as spotifyCheckSaved,
   getTopTracks as spotifyTopTracks, getTopArtists as spotifyTopArtists,
@@ -26,6 +27,8 @@ import {
   postCreatePlaylist as spotifyCreatePlaylist, putUpdatePlaylist as spotifyUpdatePlaylist,
   postAddTracks as spotifyAddTracks, deletePlaylistTracks as spotifyRemoveTracks,
   deletePlaylistFollow as spotifyUnfollow, putPlaylistFollow as spotifyFollow,
+  postRepeat as spotifyRepeat, postShuffle as spotifyShuffle,
+  getQueue as spotifyGetQueue, postQueue as spotifyAddQueue,
 } from '../../controllers/v1/spotify.js';
 
 const router = Router();
@@ -65,9 +68,14 @@ router.post('/spotify/next', spotifyNext);
 router.post('/spotify/previous', spotifyPrevious);
 router.post('/spotify/volume', spotifyVolume);
 router.post('/spotify/transfer', spotifyTransfer);
+router.post('/spotify/repeat', spotifyRepeat);
+router.post('/spotify/shuffle', spotifyShuffle);
+router.get('/spotify/queue', spotifyGetQueue);
+router.post('/spotify/queue', spotifyAddQueue);
 router.get('/spotify/preview/:trackId', spotifyPreview);
 router.get('/spotify/playlist/:id', spotifyPlaylist);
 router.get('/spotify/album/:id', spotifyAlbum);
+router.get('/spotify/artist/:id', spotifyArtist);
 router.get('/spotify/saved-tracks', spotifySavedTracks);
 router.put('/spotify/saved-tracks/:id', spotifySaveTrack);
 router.delete('/spotify/saved-tracks/:id', spotifyUnsaveTrack);

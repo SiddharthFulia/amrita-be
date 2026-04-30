@@ -204,6 +204,51 @@ export const postVolume = async (req, res) => {
   }
 };
 
+// ─── POST /api/spotify/repeat  body: { state, deviceId }   state: off|track|context
+export const postRepeat = async (req, res) => {
+  try {
+    const { state, deviceId } = req.body || {};
+    if (!['off', 'track', 'context'].includes(state)) return responseHelper.error(res, 'state must be off/track/context', 400);
+    await Spotify.setRepeat(state, deviceId);
+    return responseHelper.success(res, { ok: true });
+  } catch (err) {
+    return responseHelper.error(res, err.message, err.status || 500);
+  }
+};
+
+// ─── POST /api/spotify/shuffle  body: { state: bool, deviceId }
+export const postShuffle = async (req, res) => {
+  try {
+    const { state, deviceId } = req.body || {};
+    await Spotify.setShuffle(!!state, deviceId);
+    return responseHelper.success(res, { ok: true });
+  } catch (err) {
+    return responseHelper.error(res, err.message, err.status || 500);
+  }
+};
+
+// ─── GET /api/spotify/queue
+export const getQueue = async (req, res) => {
+  try {
+    const data = await Spotify.getQueue();
+    return responseHelper.success(res, data);
+  } catch (err) {
+    return responseHelper.error(res, err.message, err.status || 500);
+  }
+};
+
+// ─── POST /api/spotify/queue  body: { uri, deviceId }
+export const postQueue = async (req, res) => {
+  try {
+    const { uri, deviceId } = req.body || {};
+    if (!uri) return responseHelper.error(res, 'uri required', 400);
+    await Spotify.addToQueue(uri, deviceId);
+    return responseHelper.success(res, { ok: true });
+  } catch (err) {
+    return responseHelper.error(res, err.message, err.status || 500);
+  }
+};
+
 // ─── POST /api/spotify/transfer  body: { deviceId, play }
 export const postTransfer = async (req, res) => {
   try {
@@ -231,6 +276,19 @@ export const getAlbum = async (req, res) => {
   try {
     const data = await Spotify.getAlbum(req.params.id);
     return responseHelper.success(res, data);
+  } catch (err) {
+    return responseHelper.error(res, err.message, err.status || 500);
+  }
+};
+
+// ─── GET /api/spotify/artist/:id
+export const getArtist = async (req, res) => {
+  try {
+    const [artist, albums] = await Promise.all([
+      Spotify.getArtist(req.params.id),
+      Spotify.getArtistAlbums(req.params.id, 10).catch((err) => { console.warn('Artist albums failed:', err.message); return { items: [] }; }),
+    ]);
+    return responseHelper.success(res, { ...artist, albums });
   } catch (err) {
     return responseHelper.error(res, err.message, err.status || 500);
   }
